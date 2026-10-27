@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 
 // Rotas publicas: nao exigem sessao.
-const PUBLICAS = ["/login", "/setup"];
+const PUBLICAS = ["/login"];
 const RAIZ = "/";
 
 // O middleware faz apenas uma triagem: sem cookie de sessao, manda para o login.

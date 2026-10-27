@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   id SERIAL PRIMARY KEY,
   nome TEXT NOT NULL,
   email TEXT NOT NULL UNIQUE,
-  senha_hash TEXT NOT NULL,
+  senha_hash TEXT,
   papel TEXT NOT NULL CHECK (papel IN ('GR','GD','STAFF')),
   ativo BOOLEAN NOT NULL DEFAULT TRUE,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -71,6 +71,19 @@ CREATE TABLE IF NOT EXISTS evento_itens (
   observacao TEXT,
   UNIQUE (evento_id, item_key)
 );
+
+-- Bancos criados na versao com senha: a coluna deixa de ser obrigatoria (login agora e por codigo).
+ALTER TABLE usuarios ALTER COLUMN senha_hash DROP NOT NULL;
+
+CREATE TABLE IF NOT EXISTS login_codigos (
+  id SERIAL PRIMARY KEY,
+  email TEXT NOT NULL,
+  codigo_hash TEXT NOT NULL,
+  expira_em TIMESTAMPTZ NOT NULL,
+  tentativas INTEGER NOT NULL DEFAULT 0,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS login_codigos_email_idx ON login_codigos(email, id);
 
 CREATE INDEX IF NOT EXISTS evento_itens_evento_idx ON evento_itens(evento_id);
 CREATE INDEX IF NOT EXISTS eventos_data_idx ON eventos(data);

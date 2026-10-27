@@ -1,17 +1,23 @@
 "use server";
 
+import { randomInt } from "crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { q, one } from "@/lib/db";
 import {
   criarSessao,
   encerrarSessao,
-  conferirSenha,
-  hashSenha,
-  existeAlgumUsuario,
   exigirUsuario,
+  adminEmails,
+  emailValido,
+  emailDoDominio,
+  nomeDoEmail,
+  hashCodigo,
+  codigoConfere,
+  DOMINIO_PERMITIDO,
   type Papel,
 } from "@/lib/auth";
+import { enviarCodigo } from "@/lib/email";
 import { ITENS, TEMPLATE_VERSAO } from "@/lib/checklist";
 
 type Resultado = { erro?: string } | undefined;
@@ -20,41 +26,104 @@ function s(fd: FormData, k: string): string {
   return String(fd.get(k) ?? "").trim();
 }
 
-function emailValido(e: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+// ---------------- LOGIN POR CODIGO (somente emails @ems.com.br) ----------------
+export type EstadoLogin = { etapa: "email" | "codigo"; email?: string; erro?: string; info?: string };
+
+const VALIDADE_MIN = 10;
+const MAX_TENTATIVAS = 5;
+const MAX_CODIGOS_POR_HORA = 5;
+const INTERVALO_REENVIO_SEG = 45;
+
+async function emailAutorizado(email: string): Promise<boolean> {
+  if (!emailValido(email)) return false;
+  if (emailDoDominio(email) || adminEmails().includes(email)) return true;
+  // Gerente Regional ja cadastrado (ex.: criado antes desta regra) continua com acesso.
+  const gr = await one("SELECT 1 AS x FROM usuarios WHERE email = $1 AND papel = 'GR' AND ativo = TRUE", [email]);
+  return !!gr;
 }
 
-// ---------------- SETUP (primeiro acesso) ----------------
-export async function setupInicial(_prev: Resultado, fd: FormData): Promise<Resultado> {
-  if (await existeAlgumUsuario()) return { erro: "O sistema já foi configurado." };
-  const nome = s(fd, "nome");
-  const email = s(fd, "email").toLowerCase();
-  const senha = s(fd, "senha");
-  if (!nome || !emailValido(email)) return { erro: "Informe nome e um email válido." };
-  if (senha.length < 8) return { erro: "A senha precisa ter pelo menos 8 caracteres." };
-  const hash = await hashSenha(senha);
-  const u = await one<{ id: number }>(
-    "INSERT INTO usuarios (nome, email, senha_hash, papel) VALUES ($1,$2,$3,'GR') RETURNING id",
-    [nome, email, hash]
-  );
-  await criarSessao(u!.id);
-  redirect("/eventos");
-}
+async function emitirCodigo(email: string): Promise<EstadoLogin> {
+  await q("DELETE FROM login_codigos WHERE criado_em < NOW() - INTERVAL '1 day'");
 
-// ---------------- LOGIN / LOGOUT ----------------
-export async function login(_prev: Resultado, fd: FormData): Promise<Resultado> {
-  const email = s(fd, "email").toLowerCase();
-  const senha = s(fd, "senha");
-  const next = s(fd, "next") || "/eventos";
-  const u = await one<{ id: number; senha_hash: string; ativo: boolean }>(
-    "SELECT id, senha_hash, ativo FROM usuarios WHERE email = $1",
+  const rec = await one<{ n: string; recente: boolean }>(
+    `SELECT COUNT(*)::text AS n,
+            COALESCE(BOOL_OR(criado_em > NOW() - INTERVAL '${INTERVALO_REENVIO_SEG} seconds'), FALSE) AS recente
+       FROM login_codigos WHERE email = $1 AND criado_em > NOW() - INTERVAL '1 hour'`,
     [email]
   );
-  if (!u || !u.ativo || !(await conferirSenha(senha, u.senha_hash))) {
-    return { erro: "Email ou senha incorretos." };
+  if (rec?.recente) {
+    return { etapa: "codigo", email, info: "Um código acabou de ser enviado. Aguarde alguns segundos para pedir outro." };
   }
-  await criarSessao(u.id);
-  redirect(next.startsWith("/") ? next : "/eventos");
+  if (Number(rec?.n ?? 0) >= MAX_CODIGOS_POR_HORA) {
+    return { etapa: "email", erro: "Muitos códigos solicitados para este email. Tente novamente em cerca de uma hora." };
+  }
+
+  const codigo = String(randomInt(0, 1000000)).padStart(6, "0");
+  const reg = await one<{ id: number }>(
+    `INSERT INTO login_codigos (email, codigo_hash, expira_em)
+     VALUES ($1, $2, NOW() + INTERVAL '${VALIDADE_MIN} minutes') RETURNING id`,
+    [email, hashCodigo(email, codigo)]
+  );
+  try {
+    await enviarCodigo(email, codigo);
+  } catch (e) {
+    console.error("Falha ao enviar codigo:", e instanceof Error ? e.message : e);
+    await q("DELETE FROM login_codigos WHERE id = $1", [reg!.id]);
+    return { etapa: "email", erro: "Não foi possível enviar o email agora. Tente novamente em instantes." };
+  }
+  return { etapa: "codigo", email, info: `Enviamos um código de 6 dígitos para ${email}. Ele vale por ${VALIDADE_MIN} minutos.` };
+}
+
+export async function entrar(_prev: EstadoLogin | undefined, fd: FormData): Promise<EstadoLogin> {
+  const acao = s(fd, "acao");
+  const email = s(fd, "email").toLowerCase();
+  const next = s(fd, "next");
+
+  if (acao === "voltar") return { etapa: "email" };
+
+  if (!emailValido(email)) return { etapa: "email", erro: "Informe um email válido." };
+  if (!(await emailAutorizado(email))) {
+    return { etapa: "email", erro: `Acesso restrito a emails @${DOMINIO_PERMITIDO}.` };
+  }
+
+  if (acao === "enviar" || acao === "reenviar") return emitirCodigo(email);
+
+  // acao === "verificar"
+  const codigo = s(fd, "codigo").replace(/\D/g, "");
+  if (codigo.length !== 6) return { etapa: "codigo", email, erro: "Digite os 6 dígitos do código." };
+
+  const reg = await one<{ id: number; codigo_hash: string; expirado: boolean; tentativas: number }>(
+    `SELECT id, codigo_hash, (expira_em < NOW()) AS expirado, tentativas
+       FROM login_codigos WHERE email = $1 ORDER BY id DESC LIMIT 1`,
+    [email]
+  );
+  if (!reg) return { etapa: "email", erro: "Solicite um novo código." };
+  if (reg.expirado) return { etapa: "email", erro: "Código expirado. Solicite um novo." };
+  if (reg.tentativas >= MAX_TENTATIVAS) return { etapa: "email", erro: "Muitas tentativas incorretas. Solicite um novo código." };
+
+  if (!codigoConfere(email, codigo, reg.codigo_hash)) {
+    await q("UPDATE login_codigos SET tentativas = tentativas + 1 WHERE id = $1", [reg.id]);
+    return { etapa: "codigo", email, erro: "Código incorreto." };
+  }
+
+  // Sucesso: codigo de uso unico.
+  await q("DELETE FROM login_codigos WHERE email = $1", [email]);
+
+  const ehAdmin = adminEmails().includes(email);
+  let u = await one<{ id: number; ativo: boolean }>("SELECT id, ativo FROM usuarios WHERE email = $1", [email]);
+  if (!u) {
+    u = await one<{ id: number; ativo: boolean }>(
+      "INSERT INTO usuarios (nome, email, papel) VALUES ($1, $2, $3) RETURNING id, ativo",
+      [nomeDoEmail(email), email, ehAdmin ? "GR" : "STAFF"]
+    );
+  } else if (ehAdmin) {
+    await q("UPDATE usuarios SET papel = 'GR', ativo = TRUE WHERE id = $1", [u.id]);
+    u.ativo = true;
+  }
+  if (!u!.ativo) return { etapa: "email", erro: "Conta desativada. Fale com o Gerente Regional." };
+
+  await criarSessao(u!.id);
+  redirect(next.startsWith("/") && !next.startsWith("//") ? next : "/eventos");
 }
 
 export async function logout(): Promise<void> {
@@ -63,28 +132,6 @@ export async function logout(): Promise<void> {
 }
 
 // ---------------- USUARIOS (somente GR) ----------------
-export async function criarUsuario(_prev: Resultado, fd: FormData): Promise<Resultado> {
-  const eu = await exigirUsuario();
-  if (eu.papel !== "GR") return { erro: "Apenas o Gerente Regional cadastra usuários." };
-  const nome = s(fd, "nome");
-  const email = s(fd, "email").toLowerCase();
-  const senha = s(fd, "senha");
-  const papel = s(fd, "papel") as Papel;
-  if (!nome || !emailValido(email)) return { erro: "Informe nome e um email válido." };
-  if (senha.length < 8) return { erro: "A senha precisa ter pelo menos 8 caracteres." };
-  if (!["GR", "GD", "STAFF"].includes(papel)) return { erro: "Papel inválido." };
-  const existe = await one("SELECT 1 FROM usuarios WHERE email = $1", [email]);
-  if (existe) return { erro: "Já existe usuário com esse email." };
-  await q("INSERT INTO usuarios (nome, email, senha_hash, papel) VALUES ($1,$2,$3,$4)", [
-    nome,
-    email,
-    await hashSenha(senha),
-    papel,
-  ]);
-  revalidatePath("/usuarios");
-  return {};
-}
-
 export async function alternarAtivo(fd: FormData): Promise<void> {
   const eu = await exigirUsuario();
   if (eu.papel !== "GR") return;
@@ -94,16 +141,14 @@ export async function alternarAtivo(fd: FormData): Promise<void> {
   revalidatePath("/usuarios");
 }
 
-export async function redefinirSenha(_prev: Resultado, fd: FormData): Promise<Resultado> {
+export async function alterarPapel(fd: FormData): Promise<void> {
   const eu = await exigirUsuario();
-  if (eu.papel !== "GR") return { erro: "Apenas o Gerente Regional redefine senhas." };
+  if (eu.papel !== "GR") return;
   const id = Number(fd.get("id"));
-  const senha = s(fd, "senha");
-  if (!id) return { erro: "Usuário inválido." };
-  if (senha.length < 8) return { erro: "A senha precisa ter pelo menos 8 caracteres." };
-  await q("UPDATE usuarios SET senha_hash = $1 WHERE id = $2", [await hashSenha(senha), id]);
+  const papel = String(fd.get("papel") ?? "") as Papel;
+  if (!id || id === eu.id || !["GR", "GD", "STAFF"].includes(papel)) return;
+  await q("UPDATE usuarios SET papel = $1 WHERE id = $2", [papel, id]);
   revalidatePath("/usuarios");
-  return {};
 }
 
 // ---------------- EVENTOS ----------------
