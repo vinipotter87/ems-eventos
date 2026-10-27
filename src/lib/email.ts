@@ -28,11 +28,11 @@ export async function enviarCodigo(para: string, codigo: string): Promise<void> 
     `Ele vale por 10 minutos. Se você não solicitou, ignore esta mensagem.`;
 
   const html = `
-    <div style="font-family:Arial,Helvetica,sans-serif;max-width:420px;margin:0 auto;padding:24px;color:#1a2233">
-      <div style="display:inline-block;background:#0b3d91;color:#fff;font-weight:800;border-radius:6px;padding:3px 9px;letter-spacing:.5px">EMS</div>
-      <h2 style="margin:16px 0 4px;color:#072a66">Seu código de acesso</h2>
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:420px;margin:0 auto;padding:24px;color:#1F2D44">
+      <div style="display:inline-block;background:#1F2D44;color:#BFE3F8;font-weight:800;border-radius:6px;padding:4px 10px;letter-spacing:2px">GRUPO EMS</div>
+      <h2 style="margin:16px 0 4px;color:#1F2D44">Seu código de acesso</h2>
       <p style="margin:0 0 16px;color:#5b6578">Use o código abaixo para entrar em Eventos EMS.</p>
-      <div style="font-size:32px;font-weight:700;letter-spacing:8px;background:#e8eefb;color:#0b3d91;border-radius:10px;padding:14px 0;text-align:center">${codigo}</div>
+      <div style="font-size:32px;font-weight:700;letter-spacing:8px;background:#DFF1FB;color:#1F2D44;border-radius:10px;padding:14px 0;text-align:center">${codigo}</div>
       <p style="margin:16px 0 0;font-size:13px;color:#5b6578">Vale por 10 minutos. Se você não solicitou, ignore esta mensagem.</p>
     </div>`;
 

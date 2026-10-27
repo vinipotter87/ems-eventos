@@ -2,13 +2,14 @@ import Link from "next/link";
 import type { Usuario } from "@/lib/auth";
 import { PAPEL_LABEL } from "@/lib/auth";
 import { logout } from "@/app/actions";
+import Logo from "@/components/Logo";
 
 export default function Topbar({ usuario }: { usuario: Usuario }) {
   return (
     <header className="topbar">
       <Link href="/eventos" className="marca">
-        <span className="logo">EMS</span>
-        <span>Eventos</span>
+        <Logo />
+        <span className="produto">Eventos</span>
       </Link>
       <nav>
         <Link href="/eventos">Eventos</Link>
