@@ -73,7 +73,7 @@ export default async function EventoPage({ params, searchParams }: { params: Pro
                 {(ev.local || ev.cidade) && <span><b>Local:</b> {[ev.local, ev.cidade].filter(Boolean).join(", ")}</span>}
                 {ev.marca && <span><b>Marca:</b> {ev.marca}</span>}
                 {ev.speaker && <span><b>Speaker:</b> {ev.speaker}</span>}
-                {ev.gd_nome && <span><b>GD:</b> {ev.gd_nome}</span>}
+                {ev.gd_nome && <span><b>Responsável:</b> {ev.gd_nome}</span>}
               </div>
               {ev.observacoes && <p className="suave" style={{ margin: "8px 0 0", whiteSpace: "pre-wrap" }}>{ev.observacoes}</p>}
             </div>

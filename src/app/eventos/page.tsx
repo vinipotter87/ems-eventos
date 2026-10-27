@@ -32,7 +32,7 @@ export default async function EventosPage({ searchParams }: { searchParams: Prom
     ORDER BY CASE WHEN e.status IN ('planejamento','realizado') THEN 0 ELSE 1 END, e.data ASC, e.id DESC
   `, params);
 
-  const gds = await q<{ id: number; nome: string }>("SELECT id, nome FROM usuarios WHERE papel IN ('GD','GR') AND ativo ORDER BY nome");
+  const gds = await q<{ id: number; nome: string }>("SELECT id, nome FROM usuarios u WHERE u.ativo AND EXISTS (SELECT 1 FROM eventos e WHERE e.gd_id = u.id) ORDER BY u.nome");
 
   const filtro = (s: string, label: string) => (
     <Link key={s} href={`/eventos?status=${s}${gd ? `&gd=${gd}` : ""}`} className={status === s ? "ativo" : ""}>{label}</Link>
@@ -59,7 +59,7 @@ export default async function EventosPage({ searchParams }: { searchParams: Prom
         </div>
         {gds.length > 1 && (
           <div className="filtros" style={{ marginTop: -6 }}>
-            <Link href={`/eventos?status=${status}`} className={!gd ? "ativo" : ""}>Todos os GDs</Link>
+            <Link href={`/eventos?status=${status}`} className={!gd ? "ativo" : ""}>Todos os responsáveis</Link>
             {gds.map((g) => (
               <Link key={g.id} href={`/eventos?status=${status}&gd=${g.id}`} className={gd === g.id ? "ativo" : ""}>{g.nome}</Link>
             ))}
@@ -88,7 +88,7 @@ export default async function EventosPage({ searchParams }: { searchParams: Prom
                       {e.local && <span>{e.local}</span>}
                       {e.marca && <span>{e.marca}</span>}
                       {e.speaker && <span>Speaker: {e.speaker}</span>}
-                      {e.gd_nome && <span>GD: {e.gd_nome}</span>}
+                      {e.gd_nome && <span>Responsável: {e.gd_nome}</span>}
                     </div>
                     <div className={`progresso${pct === 100 ? " completo" : ""}`} style={{ marginTop: 10 }}><span style={{ width: `${pct}%` }} /></div>
                   </div>

@@ -10,10 +10,10 @@ type Valores = {
 };
 
 export default function EventoForm({
-  acao, gds, valores, gdPadrao, mostrarStatus, textoBotao,
+  acao, gds, valores, gdPadrao, mostrarStatus, textoBotao, responsavelNome,
 }: {
   acao: (prev: Resultado, fd: FormData) => Promise<Resultado>;
-  gds: GD[]; valores?: Valores; gdPadrao?: number | null; mostrarStatus?: boolean; textoBotao: string;
+  gds: GD[]; valores?: Valores; gdPadrao?: number | null; mostrarStatus?: boolean; textoBotao: string; responsavelNome?: string;
 }) {
   const [estado, submit, pendente] = useActionState(acao, undefined);
   const v = valores ?? {};
@@ -35,12 +35,16 @@ export default function EventoForm({
         <label>Speaker<input name="speaker" defaultValue={v.speaker ?? ""} /></label>
       </div>
       <div className="linha">
-        <label>GD responsável
-          <select name="gd_id" defaultValue={v.gd_id ?? gdPadrao ?? ""}>
-            <option value="">Sem GD definido</option>
-            {gds.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
-          </select>
-        </label>
+        {gds.length > 0 ? (
+          <label>Responsável pelo evento
+            <select name="gd_id" defaultValue={v.gd_id ?? gdPadrao ?? ""}>
+              <option value="">Sem responsável definido</option>
+              {gds.map((g) => <option key={g.id} value={g.id}>{g.nome}</option>)}
+            </select>
+          </label>
+        ) : (
+          <div className="suave" style={{ alignSelf: "end", paddingBottom: 6 }}>Responsável: você ({responsavelNome})</div>
+        )}
         {mostrarStatus && (
           <label>Status
             <select name="status" defaultValue={v.status ?? "planejamento"}>

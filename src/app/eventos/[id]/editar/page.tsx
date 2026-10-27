@@ -15,7 +15,7 @@ export default async function EditarEventoPage({ params }: { params: Promise<{ i
     marca: string | null; speaker: string | null; gd_id: number | null; observacoes: string | null; status: string;
   }>("SELECT id, nome, data::text AS data, horario, cidade, local, marca, speaker, gd_id, observacoes, status FROM eventos WHERE id = $1", [Number(id)]);
   if (!ev) notFound();
-  const gds = await q<{ id: number; nome: string }>("SELECT id, nome FROM usuarios WHERE papel IN ('GD','GR') AND ativo ORDER BY nome");
+  const gds = await q<{ id: number; nome: string }>("SELECT id, nome FROM usuarios WHERE ativo ORDER BY nome");
   return (
     <>
       <Topbar usuario={eu} />

@@ -157,8 +157,8 @@ export async function criarEvento(_prev: Resultado, fd: FormData): Promise<Resul
   const nome = s(fd, "nome");
   const data = s(fd, "data");
   if (!nome || !data) return { erro: "Nome e data do evento são obrigatórios." };
-  const gdRaw = s(fd, "gd_id");
-  const gd_id = gdRaw ? Number(gdRaw) : eu.papel === "GD" ? eu.id : null;
+  // O responsavel pelo evento e quem esta logado e o cria (nome vem do email no primeiro acesso).
+  const gd_id = eu.id;
 
   const ev = await one<{ id: number }>(
     `INSERT INTO eventos (nome, data, horario, cidade, local, marca, speaker, gd_id, observacoes, template_versao, criado_por)
